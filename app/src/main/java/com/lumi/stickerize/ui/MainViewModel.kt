@@ -69,6 +69,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     var sheet by mutableStateOf<ImageBitmap?>(null)
         private set
+    /** Bitmap asli tiap stiker (untuk diedit dengan penghapus). */
+    var stickerBitmaps by mutableStateOf<List<Bitmap>>(emptyList())
+        private set
     var stickers by mutableStateOf<List<ImageBitmap>>(emptyList())
         private set
     var packId by mutableStateOf<String?>(null)
@@ -253,6 +256,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 sheet = sheetBmp.asImageBitmap()
+                stickerBitmaps = pieces
                 stickers = pieces.map { it.asImageBitmap() }
                 packId = id
                 packName = name
@@ -283,6 +287,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return id to name
     }
 
+    /** Simpan stiker yang sudah dihapus manual, lalu perbarui paket WhatsApp-nya. */
+    fun updateSticker(index: Int, edited: Bitmap) {
+        val id = packId ?: return
+        stickerBitmaps = stickerBitmaps.toMutableList().also { it[index] = edited }
+        stickers = stickers.toMutableList().also { it[index] = edited.asImageBitmap() }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                PackStore.updateSticker(getApplication(), id, index, edited)
+            }
+            notice = "Stiker ${index + 1} diperbarui."
+        }
+    }
+
     fun restart() {
         if (generating) return
         for (i in 0 until 3) clearPhoto(i)
@@ -292,6 +309,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         for (i in words.indices) words[i] = ""
         sheet = null
         stickers = emptyList()
+        stickerBitmaps = emptyList()
         packId = null
         packName = ""
         notice = null

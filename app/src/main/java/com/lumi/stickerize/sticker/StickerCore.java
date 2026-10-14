@@ -306,11 +306,38 @@ public final class StickerCore {
         if (largest < n / 200) return null; // sel praktis kosong
 
         boolean[] keep = new boolean[comps + 1];
-        int l = cw, t = ch, r = -1, b = -1;
+        boolean[] lineLike = new boolean[comps + 1];
+        int cellMin = Math.min(cw, ch);
         for (int c = 1; c <= comps; c++) {
             boolean k = areas[c] >= minArea;
             if (touches[c] && areas[c] < largest * 0.15) k = false;
             keep[c] = k;
+            // Potongan garis: tipis, memanjang, dan hampir memenuhi kotak pembatasnya
+            int bwc = bounds[c * 4 + 2] - bounds[c * 4] + 1;
+            int bhc = bounds[c * 4 + 3] - bounds[c * 4 + 1] + 1;
+            int len = Math.max(bwc, bhc);
+            double thick = (double) areas[c] / len;
+            double fill = (double) areas[c] / ((double) bwc * bhc);
+            lineLike[c] = len >= thick * 3.5 && thick <= cellMin * 0.035 && fill >= 0.45
+                && areas[c] < largest * 0.2;
+        }
+        // Buang potongan garis yang terpisah dari isi stiker (bukan bagian huruf / gambar).
+        int gapLimit = Math.max(4, (int) (cellMin * 0.025));
+        for (int c = 1; c <= comps; c++) {
+            if (!keep[c] || !lineLike[c]) continue;
+            boolean near = false;
+            for (int o = 1; o <= comps && !near; o++) {
+                if (o == c || !keep[o] || lineLike[o]) continue;
+                int dx = Math.max(0, Math.max(bounds[o * 4] - bounds[c * 4 + 2], bounds[c * 4] - bounds[o * 4 + 2]));
+                int dy = Math.max(0, Math.max(bounds[o * 4 + 1] - bounds[c * 4 + 3], bounds[c * 4 + 1] - bounds[o * 4 + 3]));
+                if (Math.max(dx, dy) <= gapLimit) near = true;
+            }
+            if (!near) keep[c] = false;
+        }
+
+        int l = cw, t = ch, r = -1, b = -1;
+        for (int c = 1; c <= comps; c++) {
+            boolean k = keep[c];
             if (k) {
                 l = Math.min(l, bounds[c * 4]);
                 t = Math.min(t, bounds[c * 4 + 1]);

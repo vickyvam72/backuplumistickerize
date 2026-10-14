@@ -796,6 +796,21 @@ private fun SummaryRow(label: String, value: String, target: Step, vm: MainViewM
 private fun ResultStep(vm: MainViewModel) {
     val context = LocalContext.current
     var showSheet by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Int?>(null) }
+    editing?.let { idx ->
+        val original = vm.stickerBitmaps.getOrNull(idx)
+        if (original != null) {
+            EraserDialog(
+                index = idx,
+                original = original,
+                onDismiss = { editing = null },
+                onSave = { edited ->
+                    vm.updateSticker(idx, edited)
+                    editing = null
+                }
+            )
+        }
+    }
     val waLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { res ->
@@ -812,18 +827,34 @@ private fun ResultStep(vm: MainViewModel) {
         Spacer(Modifier.height(12.dp))
     }
 
-    vm.stickers.chunked(3).forEach { row ->
+    Text(
+        "✏️ Ketuk stiker untuk merapikan / menghapus bagian yang tidak rapi",
+        fontSize = 13.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(Modifier.height(8.dp))
+    vm.stickers.withIndex().toList().chunked(3).forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            row.forEach { bmp ->
+            row.forEach { (index, bmp) ->
                 Box(
                     Modifier
                         .weight(1f)
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(LumiTile)
+                        .clickable { editing = index }
                         .padding(6.dp)
                 ) {
-                    Image(bmp, contentDescription = "Stiker", modifier = Modifier.fillMaxSize())
+                    Image(bmp, contentDescription = "Stiker ${index + 1}", modifier = Modifier.fillMaxSize())
+                    Text(
+                        "✏️",
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.85f))
+                            .padding(4.dp)
+                    )
                 }
             }
             repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

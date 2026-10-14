@@ -61,6 +61,18 @@ object PackStore {
         return pack
     }
 
+    /** Ganti satu stiker (mis. setelah dihapus manual). Versi paket dinaikkan agar WhatsApp memperbarui. */
+    fun updateSticker(context: Context, id: String, index: Int, bitmap: Bitmap): StickerPack? {
+        val pack = load(context, id) ?: return null
+        val entry = pack.stickers.getOrNull(index) ?: return null
+        val dir = packDir(context, id)
+        File(dir, entry.fileName).writeBytes(StickerMaker.encodeWebp(bitmap))
+        if (index == 0) File(dir, TRAY_FILE).writeBytes(StickerMaker.trayPng(bitmap))
+        val updated = pack.copy(version = pack.version + 1)
+        File(dir, "pack.json").writeText(toJson(updated).toString())
+        return updated
+    }
+
     fun rename(context: Context, id: String, newName: String): StickerPack? {
         val pack = load(context, id) ?: return null
         val updated = pack.copy(name = newName.take(128), version = pack.version + 1)
