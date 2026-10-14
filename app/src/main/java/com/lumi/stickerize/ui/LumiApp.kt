@@ -46,6 +46,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lumi.stickerize.R
 import com.lumi.stickerize.data.AppSettings
+import com.lumi.stickerize.data.Provider
 import com.lumi.stickerize.model.GridSpec
 import com.lumi.stickerize.model.StickerStyle
 import com.lumi.stickerize.ui.theme.LumiBlue
@@ -311,7 +313,7 @@ private fun PhotosStep(vm: MainViewModel) {
         listOf(
             "Outfit sama di ketiga foto",
             "Wajah terlihat jelas & terang",
-            "Orang yang sama di ketiga foto (boleh berdua, maks. 2 wajah)",
+            "Foto 1 dipakai untuk memilih wajah: pastikan semua orang yang mau dijadikan stiker ada di foto 1 (maks. 2 orang)",
             "Campur sudut: depan, samping, setengah badan",
         )
     )
@@ -383,50 +385,44 @@ private val faceColors = listOf(Color(0xFF3E84E8), Color(0xFFE8673E))
 
 @Composable
 private fun FacesStep(vm: MainViewModel) {
-    InfoCard("Wajah di tiap foto sudah dideteksi otomatis. Ketuk kotak di wajah untuk memilih. Maksimal hanya 2 wajah yang bisa dijadikan stiker.")
+    InfoCard("Wajah di foto pertama sudah dideteksi otomatis. Ketuk kotak di wajah untuk memilih siapa yang dijadikan stiker. Maksimal hanya 2 wajah.")
     Spacer(Modifier.height(14.dp))
-    for (i in 0 until 3) {
-        val info = vm.photos[i] ?: continue
-        val sel = vm.selections[i]
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Foto ${i + 1}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text(
-                when (info.faces.size) {
-                    0 -> "Tidak ada wajah"
-                    else -> "${info.faces.size} wajah • ${sel.size} dipilih"
-                },
-                fontSize = 13.sp,
-                color = if (info.faces.isEmpty()) Color(0xFFD14343) else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        FacePhoto(info = info, selected = sel, onToggle = { vm.toggleFace(i, it) })
-        Spacer(Modifier.height(6.dp))
-        when {
-            info.faces.isEmpty() -> Text(
-                "Wajah tidak terdeteksi. Kembali dan ganti foto ini dengan foto yang wajahnya terlihat jelas.",
-                fontSize = 13.sp,
-                color = Color(0xFFD14343)
-            )
-            info.faces.size == 2 && sel.size < 2 -> TextButton(onClick = { vm.selectAllFaces(i) }) {
-                Text("Pilih keduanya (stiker berdua)")
-            }
-            info.faces.size > 2 -> Text(
-                "Ada ${info.faces.size} wajah. Pilih maksimal 2.",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            sel.isEmpty() -> Text(
-                "Ketuk wajah yang mau dijadikan stiker.",
-                fontSize = 13.sp,
-                color = LumiBlue
-            )
-        }
-        Spacer(Modifier.height(18.dp))
+    val info = vm.photos[0] ?: return
+    val sel = vm.selectedFaces
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Foto 1", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(
+            if (info.faces.isEmpty()) "Tidak ada wajah" else "${info.faces.size} wajah • ${sel.size} dipilih",
+            fontSize = 13.sp,
+            color = if (info.faces.isEmpty()) Color(0xFFD14343) else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
-    val counts = vm.selections.map { it.size }.filter { it > 0 }
-    if (counts.size == 3 && counts.distinct().size > 1) {
-        InfoCard("Jumlah wajah yang dipilih berbeda di tiap foto. Stiker akan dibuat untuk ${vm.peopleCount} orang.")
+    Spacer(Modifier.height(6.dp))
+    FacePhoto(info = info, selected = sel, onToggle = { vm.toggleFace(it) })
+    Spacer(Modifier.height(8.dp))
+    when {
+        info.faces.isEmpty() -> Text(
+            "Wajah tidak terdeteksi. Kembali dan ganti foto 1 dengan foto yang wajahnya terlihat jelas.",
+            fontSize = 13.sp,
+            color = Color(0xFFD14343)
+        )
+        info.faces.size == 2 && sel.size < 2 -> OutlinedButton(
+            onClick = { vm.selectAllFaces() },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Pilih keduanya (stiker berdua)") }
+        info.faces.size > 2 -> Text(
+            "Ada ${info.faces.size} wajah. Pilih maksimal 2.",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        sel.isEmpty() -> Text("Ketuk wajah yang mau dijadikan stiker.", fontSize = 13.sp, color = LumiBlue)
+    }
+    if (sel.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        InfoCard(
+            if (sel.size >= 2) "Stiker akan berisi 2 orang: orang bertanda biru (kiri) dan oranye (kanan). Foto 2 & 3 dipakai sebagai referensi tambahan."
+            else "Stiker akan berisi 1 orang. Foto 2 & 3 dipakai sebagai referensi tambahan untuk orang yang sama."
+        )
     }
 }
 
@@ -636,11 +632,7 @@ private fun TextStep(vm: MainViewModel) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = {
-                for (i in 0 until vm.count) {
-                    if (vm.words[i].isBlank()) vm.words[i] = wordIdeas[i % wordIdeas.size]
-                }
-            }) { Text("Isi contoh") }
+            FilledTonalButton(onClick = { vm.randomAllWords() }) { Text("🎲 Acak semua") }
         }
         Spacer(Modifier.height(4.dp))
         for (i in 0 until vm.count) {
@@ -650,6 +642,11 @@ private fun TextStep(vm: MainViewModel) {
                 label = { Text("Stiker ${i + 1}") },
                 placeholder = { Text(wordIdeas[i % wordIdeas.size]) },
                 singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = { vm.randomWord(i) }) {
+                        Text("🎲", fontSize = 20.sp)
+                    }
+                },
                 keyboardOptions = KeyboardOptions(
                     imeAction = if (i == vm.count - 1) ImeAction.Done else ImeAction.Next
                 ),
@@ -660,7 +657,7 @@ private fun TextStep(vm: MainViewModel) {
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            "Tips: kata pendek (1–3 kata) paling rapi hasilnya.",
+            "Tekan 🎲 untuk kata acak dari 1.600+ pilihan. Kata pendek (1–3 kata) paling rapi hasilnya.",
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -943,37 +940,21 @@ private fun TipCard(title: String, items: List<String>) {
 @Composable
 private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
     var key by remember { mutableStateOf(settings.apiKey) }
+    var cfAccount by remember { mutableStateOf(settings.cfAccountId) }
+    var cfToken by remember { mutableStateOf(settings.cfToken) }
     var model by remember { mutableStateOf(settings.model) }
     var publisher by remember { mutableStateOf(settings.publisher) }
     var reveal by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
+    val provider = AppSettings.providerOf(model)
+    val hidden = if (reveal) VisualTransformation.None else PasswordVisualTransformation()
 
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Pengaturan AI") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    "Lumi memakai AI dari OpenRouter. Masukkan API key OpenRouter kamu (diawali sk-or-). Key hanya disimpan di HP ini.",
-                    fontSize = 14.sp
-                )
-                TextButton(onClick = { uri.openUri(AppSettings.API_KEY_URL) }) {
-                    Text("Buat API key di openrouter.ai →")
-                }
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it },
-                    label = { Text("OpenRouter API key") },
-                    placeholder = { Text("sk-or-v1-…") },
-                    singleLine = true,
-                    visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "Tutup" else "Lihat") }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(14.dp))
-                Text("Model AI", fontWeight = FontWeight.Bold)
+                Text("Pilih model AI", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 AppSettings.MODELS.forEach { m ->
                     val selected = model == m.id
@@ -991,7 +972,21 @@ private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
                             .clickable { model = m.id }
                             .padding(12.dp)
                     ) {
-                        Text(m.label, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(m.label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            if (m.free) {
+                                Text(
+                                    "GRATIS",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(WhatsAppGreen)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Text(m.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -999,10 +994,68 @@ private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
                     value = model,
                     onValueChange = { model = it },
                     label = { Text("ID model (bisa diisi manual)") },
+                    supportingText = { Text("Diawali @cf/ = Cloudflare, lainnya = OpenRouter") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+
+                if (provider == Provider.OPENROUTER) {
+                    Text("OpenRouter (berbayar)", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Masukkan API key OpenRouter (diawali sk-or-). Isi kredit di openrouter.ai/credits.",
+                        fontSize = 13.sp
+                    )
+                    TextButton(onClick = { uri.openUri(AppSettings.API_KEY_URL) }) {
+                        Text("Buat API key di openrouter.ai →")
+                    }
+                    OutlinedTextField(
+                        value = key,
+                        onValueChange = { key = it },
+                        label = { Text("OpenRouter API key") },
+                        placeholder = { Text("sk-or-v1-…") },
+                        singleLine = true,
+                        visualTransformation = hidden,
+                        trailingIcon = {
+                            TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "Tutup" else "Lihat") }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text("Cloudflare Workers AI (gratis)", fontWeight = FontWeight.Bold)
+                    Text(
+                        "1) Daftar gratis di dash.cloudflare.com\n" +
+                            "2) Salin Account ID (ada di halaman Workers AI / URL dashboard)\n" +
+                            "3) Buat API Token dengan template \"Workers AI\"\n" +
+                            "Kuota gratis reset tiap hari jam 07.00 WIB.",
+                        fontSize = 13.sp
+                    )
+                    TextButton(onClick = { uri.openUri(AppSettings.CF_TOKEN_URL) }) {
+                        Text("Buat API Token Cloudflare →")
+                    }
+                    OutlinedTextField(
+                        value = cfAccount,
+                        onValueChange = { cfAccount = it },
+                        label = { Text("Account ID") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = cfToken,
+                        onValueChange = { cfToken = it },
+                        label = { Text("API Token") },
+                        singleLine = true,
+                        visualTransformation = hidden,
+                        trailingIcon = {
+                            TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "Tutup" else "Lihat") }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = publisher,
                     onValueChange = { publisher = it.take(60) },
@@ -1015,6 +1068,8 @@ private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 settings.apiKey = key
+                settings.cfAccountId = cfAccount
+                settings.cfToken = cfToken
                 settings.model = model
                 settings.publisher = publisher
                 onClose()

@@ -14,13 +14,13 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class AiException(message: String) : Exception(message)
-
 /**
  * Memanggil Image API OpenRouter (POST /api/v1/images) sekali saja per pembuatan:
  * 3 foto referensi + prompt  ->  1 lembar gambar berisi semua stiker.
  */
-class OpenRouterClient(private val apiKey: String, private val model: String) {
+class OpenRouterClient(private val apiKey: String, private val model: String) : ImageGenerator {
+
+    override val maxReferences: Int = 10
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -29,7 +29,7 @@ class OpenRouterClient(private val apiKey: String, private val model: String) {
         .callTimeout(300, TimeUnit.SECONDS)
         .build()
 
-    suspend fun generateSheet(
+    override suspend fun generateSheet(
         prompt: String,
         jpegPhotos: List<ByteArray>,
         aspectRatio: String,

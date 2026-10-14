@@ -13,9 +13,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.lumi.stickerize.ai.OpenRouterClient
 import com.lumi.stickerize.ai.PromptBuilder
 import com.lumi.stickerize.data.AppSettings
+import com.lumi.stickerize.data.WordBank
 import com.lumi.stickerize.model.GridSpec
 import com.lumi.stickerize.model.StickerStyle
 import com.lumi.stickerize.sticker.PackStore
@@ -33,7 +33,7 @@ import java.util.Locale
 
 enum class Step(val title: String, val subtitle: String) {
     PHOTOS("Pilih 3 foto", "Foto wajah yang jelas akan jadi referensi AI"),
-    FACES("Pilih wajah", "Ketuk kotak wajah yang mau dijadikan stiker"),
+    FACES("Pilih wajah", "Ketuk wajah di foto pertama yang mau dijadikan stiker"),
     COUNT("Jumlah stiker", "Mau dibuatkan berapa stiker?"),
     STYLE("Pilih tema", "Gaya gambar stikermu"),
     TEXT("Tulisan", "Pakai kata di stiker atau tidak?"),
@@ -53,8 +53,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val photoUris = mutableStateListOf<Uri?>(null, null, null)
     val photos = mutableStateListOf<PhotoInfo?>(null, null, null)
-    /** Indeks wajah yang dipilih di tiap foto (maks 2). */
-    val selections = mutableStateListOf<Set<Int>>(emptySet(), emptySet(), emptySet())
+    /** Indeks wajah yang dipilih di foto pertama (maks 2). Deteksi wajah hanya di foto 1. */
+    var selectedFaces by mutableStateOf<Set<Int>>(emptySet())
+        private set
 
     var count by mutableIntStateOf(5)
     var style by mutableStateOf<StickerStyle?>(null)
@@ -78,15 +79,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val photosReady: Boolean get() = photoUris.all { it != null } && photos.all { it != null }
 
-    /** Setiap foto punya minimal 1 wajah terpilih. */
+    /** Foto pertama punya minimal 1 wajah terpilih. */
     val facesReady: Boolean
-        get() = photos.indices.all { i ->
-            val p = photos[i]
-            p != null && p.faces.isNotEmpty() && selections[i].isNotEmpty()
-        }
+        get() = (photos[0]?.faces?.isNotEmpty() == true) && selectedFaces.isNotEmpty()
 
-    /** Jumlah orang di stiker = pilihan terbanyak di antara 3 foto (1 atau 2). */
-    val peopleCount: Int get() = selections.maxOfOrNull { it.size }?.coerceIn(1, MAX_FACES) ?: 1
+    /** Jumlah orang di stiker (1 atau 2). */
+    val peopleCount: Int get() = selectedFaces.size.coerceIn(1, MAX_FACES)
     val activeWords: List<String> get() = words.take(count)
     val wordsReady: Boolean get() = !useText || activeWords.all { it.isNotBlank() }
 
@@ -118,7 +116,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setPhoto(index: Int, uri: Uri) {
         photoUris[index] = uri
         photos[index] = null
-        selections[index] = emptySet()
+        if (index == 0) selectedFaces = emptySet()
         viewModelScope.launch {
             val bmp = withContext(Dispatchers.IO) {
                 runCatching { ImageUtils.loadScaled(getApplication(), uri, 1024) }.getOrNull()
@@ -129,18 +127,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 error = "Foto tidak bisa dibuka. Coba pilih foto lain."
                 return@launch
             }
-            val faces = FaceFinder.detect(bmp)
+            // deteksi wajah cukup di foto pertama
+            val faces = if (index == 0) FaceFinder.detect(bmp) else emptyList()
             if (photoUris[index] != uri) return@launch
             photos[index] = PhotoInfo(bmp, bmp.asImageBitmap(), faces)
             // 1 wajah = otomatis terpilih; lebih dari 1 = user yang memilih
-            selections[index] = if (faces.size == 1) setOf(0) else emptySet()
+            if (index == 0) selectedFaces = if (faces.size == 1) setOf(0) else emptySet()
         }
     }
 
     /** Ketuk kotak wajah: pilih / batal pilih. Maksimal 2 wajah per foto. */
-    fun toggleFace(photo: Int, face: Int) {
-        val cur = selections[photo]
-        selections[photo] = when {
+    fun toggleFace(face: Int) {
+        val cur = selectedFaces
+        selectedFaces = when {
             face in cur -> cur - face
             cur.size >= MAX_FACES -> {
                 error = "Maksimal hanya 2 wajah yang bisa dijadikan stiker."
@@ -151,13 +150,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Pilih semua wajah di foto (hanya kalau jumlahnya ≤ 2). */
-    fun selectAllFaces(photo: Int) {
-        val p = photos[photo] ?: return
+    fun selectAllFaces() {
+        val p = photos[0] ?: return
         if (p.faces.size > MAX_FACES) {
             error = "Foto ini punya ${p.faces.size} wajah. Maksimal hanya 2 wajah yang bisa dijadikan stiker, jadi pilih 2 saja."
             return
         }
-        selections[photo] = p.faces.indices.toSet()
+        selectedFaces = p.faces.indices.toSet()
     }
 
     fun setPhotos(uris: List<Uri>) {
@@ -170,21 +169,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearPhoto(index: Int) {
         photoUris[index] = null
         photos[index] = null
-        selections[index] = emptySet()
+        if (index == 0) selectedFaces = emptySet()
+    }
+
+    /** Isi kata acak untuk satu stiker (tidak sama dengan kata di stiker lain). */
+    fun randomWord(index: Int) {
+        val others = words.filterIndexed { i, _ -> i != index && i < count }
+        words[index] = WordBank.random(getApplication(), others)
+    }
+
+    /** Isi kata acak untuk semua stiker. */
+    fun randomAllWords() {
+        val used = mutableListOf<String>()
+        for (i in 0 until count) {
+            val w = WordBank.random(getApplication(), used)
+            words[i] = w
+            used.add(w)
+        }
     }
 
     fun generate() {
         if (generating) return
-        val apiKey = settings.apiKey
-        if (apiKey.isBlank()) {
+        if (!settings.hasCredentials) {
             error = "NEED_API_KEY"
             return
         }
         val chosenStyle = style ?: return
         val infos = photos.toList()
         if (infos.any { it == null } || !facesReady) return
-        val chosen = selections.toList()
+        val chosen = selectedFaces.sorted()
         val people = peopleCount
+        val generator = settings.generator()
 
         generating = true
         error = null
@@ -196,16 +211,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val captions = if (useText) activeWords.map { it.trim() } else emptyList()
 
                 // wajah yang tidak dipilih disamarkan, lalu foto dipotong di sekitar wajah terpilih
+                // Susunan referensi:
+                //  1 orang : [foto 1 (wajah lain disamarkan), foto 2, foto 3]
+                //  2 orang : [foto 1 berdua, foto 1 hanya orang A, foto 1 hanya orang B, foto 2, foto 3]
                 val refs = withContext(Dispatchers.Default) {
-                    infos.mapIndexed { i, info ->
-                        val ref = ImageUtils.buildReference(info!!.bitmap, info.faces, chosen[i])
-                        ImageUtils.toJpeg(ref).also { ref.recycle() }
+                    val first = infos[0]!!
+                    val list = ArrayList<ByteArray>()
+                    fun add(bmp: Bitmap) {
+                        list.add(ImageUtils.toJpeg(bmp))
+                        bmp.recycle()
                     }
+                    add(ImageUtils.buildReference(first.bitmap, first.faces, chosen.toSet()))
+                    if (people >= 2) {
+                        chosen.forEach { face ->
+                            add(ImageUtils.buildReference(first.bitmap, first.faces, setOf(face)))
+                        }
+                    }
+                    for (i in 1 until infos.size) list.add(ImageUtils.toJpeg(infos[i]!!.bitmap))
+                    list.take(generator.maxReferences)
                 }
 
                 val prompt = PromptBuilder.build(chosenStyle, grid, total, captions, people)
-                val sheetBmp: Bitmap = OpenRouterClient(apiKey, settings.model)
-                    .generateSheet(prompt, refs, grid.aspectRatio)
+                val sheetBmp: Bitmap = generator.generateSheet(prompt, refs, grid.aspectRatio)
 
                 val pieces = withContext(Dispatchers.Default) {
                     StickerMaker.slice(sheetBmp, grid, total)

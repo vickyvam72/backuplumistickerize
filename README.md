@@ -4,13 +4,14 @@ Aplikasi Android untuk membuat **stiker WhatsApp otomatis dengan AI**.
 
 ## Cara kerja
 
-1. **Pilih 3 foto** sebagai referensi wajah.
-2. **Pilih jumlah stiker** (3–10, minimal 3 sesuai aturan WhatsApp).
-3. **Pilih tema**: Cartoon, Chibi, Anime, 3D Lucu, Kawaii, Pixel Art, Komik, Cat Air, Clay, Sketsa.
-4. **Tanpa kata / pakai kata** — kalau pakai kata, isi 1 kata untuk tiap stiker (5 stiker = 5 kata).
-5. AI (lewat OpenRouter) membuat **1 gambar saja** berisi semua stiker dalam bentuk grid → hemat token.
-6. Aplikasi **memotong otomatis** gambar itu menjadi stiker 512×512 (latar putih dihapus, diberi garis tepi putih, WebP < 100 KB).
-7. Tekan **Tambahkan ke WhatsApp**.
+1. **Pilih 3 foto** sebagai referensi (outfit harus sama).
+2. **Pilih wajah** di foto 1 (deteksi otomatis, maks. 2 orang).
+3. **Pilih jumlah stiker** (3–10, minimal 3 sesuai aturan WhatsApp).
+4. **Pilih tema**: Cartoon, Chibi, Anime, 3D Lucu, Kawaii, Pixel Art, Komik, Cat Air, Clay, Sketsa.
+5. **Tanpa kata / pakai kata** — isi 1 kata per stiker, atau tekan 🎲 untuk kata acak dari 1.600+ pilihan (`assets/kata_stiker.txt`).
+6. AI (lewat OpenRouter) membuat **1 gambar saja** berisi semua stiker dalam bentuk grid → hemat token.
+7. Aplikasi **memotong otomatis** gambar itu menjadi stiker 512×512 (latar putih dihapus, diberi garis tepi putih, WebP < 100 KB).
+8. Tekan **Tambahkan ke WhatsApp**.
 
 ## Download APK
 
@@ -27,6 +28,10 @@ Pilihan model (bisa diganti di pengaturan):
 | Nano Banana 2 Lite (default) | `google/gemini-3.1-flash-lite-image` | Murah & cepat, wajah mirip, teks rapi |
 | Seedream 5.0 Flash | `bytedance-seed/seedream-5-0-flash` | Paling hemat (±$0,018/gambar) |
 | Nano Banana 2 | `google/gemini-3.1-flash-image` | Kualitas terbaik, ±2x harga Lite |
+| FLUX.2 Klein 9B (**gratis**, Cloudflare) | `@cf/black-forest-labs/flux-2-klein-9b` | ±6 pembuatan/hari gratis |
+| FLUX.2 Klein 4B (**gratis**, Cloudflare) | `@cf/black-forest-labs/flux-2-klein-4b` | ±80 pembuatan/hari gratis |
+
+Model gratis memakai kuota harian Cloudflare Workers AI (10.000 neuron/hari, reset 07.00 WIB). Butuh Account ID + API Token (template "Workers AI") dari dash.cloudflare.com. OpenRouter sendiri saat ini tidak punya model gambar gratis.
 
 Aplikasi memakai endpoint `POST https://openrouter.ai/api/v1/images` dengan 3 foto sebagai `input_references`. Satu pembuatan = 1 gambar, berapa pun jumlah stikernya.
 

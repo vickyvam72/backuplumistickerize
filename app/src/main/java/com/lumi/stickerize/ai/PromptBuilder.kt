@@ -36,19 +36,29 @@ object PromptBuilder {
         )
         if (people >= 2) {
             sb.appendLine(
-                "There are TWO characters: the two people visible in the attached reference photos " +
-                    "(ignore anyone whose face is pixelated/blurred). EVERY sticker must show BOTH of them " +
-                    "together in the same cell, side by side and interacting naturally, both doing the pose. " +
-                    "Keep each person clearly recognisable and distinct from the other: same face shape, " +
-                    "hairstyle, hair colour, skin tone, glasses or hijab/accessories if any, and the same " +
-                    "outfit they wear in the photos."
+                "REFERENCE IMAGES: the FIRST reference image shows two people together — PERSON A is " +
+                    "the one on the LEFT, PERSON B is the one on the RIGHT. The SECOND reference image " +
+                    "shows only PERSON A. The THIRD reference image shows only PERSON B. Any further " +
+                    "reference images show them again in the same outfits. Pixelated faces belong to " +
+                    "other people — ignore them."
+            )
+            sb.appendLine(
+                "CHARACTERS: draw exactly two DIFFERENT characters, PERSON A and PERSON B. Each keeps " +
+                    "their OWN face, gender, hairstyle or hijab, skin tone, accessories and outfit exactly " +
+                    "as in their own reference image. NEVER draw the same person twice, never clone or " +
+                    "mirror one person, never swap their clothes. Every sticker contains exactly one " +
+                    "PERSON A (left) and exactly one PERSON B (right), side by side."
             )
         } else {
             sb.appendLine(
-                "The character is the one person shown in the attached reference photos " +
-                    "(ignore anyone whose face is pixelated/blurred). Keep them clearly recognisable: " +
-                    "same face shape, hairstyle, hair colour, skin tone, glasses or hijab/accessories " +
-                    "if any, and the same outfit they wear in the photos. Use the same character in every cell."
+                "REFERENCE IMAGES: the FIRST reference image shows the person to draw. Pixelated faces " +
+                    "belong to other people — ignore them. The other reference images show the same " +
+                    "person again; if other people appear there, ignore them too."
+            )
+            sb.appendLine(
+                "CHARACTER: exactly ONE character in every sticker — this person. Keep them clearly " +
+                    "recognisable: same face shape, hairstyle or hijab, hair colour, skin tone, glasses " +
+                    "or accessories, and the same outfit as in the photos. Never draw a second person."
             )
         }
         sb.appendLine("Art style: ${style.prompt}.")
@@ -72,11 +82,16 @@ object PromptBuilder {
             }
             val caption = captions.getOrNull(i)?.trim().orEmpty()
             if (caption.isNotEmpty()) {
-                sb.appendLine("$n. A pose and facial expression that matches the meaning of the caption. Caption: \"$caption\"")
+                val who = if (people >= 2) "PERSON A and PERSON B together" else "The character"
+                sb.appendLine("$n. $who, with a pose and facial expression that matches the meaning of the caption. Caption: \"$caption\"")
             } else {
-                val who = if (people >= 2) "Both characters" else "The character"
+                val who = if (people >= 2) "PERSON A and PERSON B together, both" else "The character"
                 sb.appendLine("$n. $who ${poses[i % poses.size]}. No text.")
             }
+        }
+        if (people >= 2) {
+            sb.appendLine()
+            sb.appendLine("Final check: in EVERY cell PERSON A and PERSON B must clearly be two different people (different faces and outfits, as in their own reference images). No duplicated person anywhere.")
         }
         return sb.toString()
     }
