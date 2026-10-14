@@ -14,6 +14,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -120,6 +122,7 @@ fun LumiApp(vm: MainViewModel) {
                 ) {
                     when (step) {
                         Step.PHOTOS -> PhotosStep(vm)
+                        Step.FACES -> FacesStep(vm)
                         Step.COUNT -> CountStep(vm)
                         Step.STYLE -> StyleStep(vm)
                         Step.TEXT -> TextStep(vm)
@@ -188,7 +191,7 @@ private fun Header(step: Step, onSettings: () -> Unit) {
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            if (step == Step.RESULT) "Selesai" else "Langkah ${step.ordinal + 1} dari 5",
+            if (step == Step.RESULT) "Selesai" else "Langkah ${step.ordinal + 1} dari ${Step.entries.size - 1}",
             color = Color.White.copy(alpha = 0.85f),
             fontSize = 13.sp
         )
@@ -270,12 +273,18 @@ private fun PhotosStep(vm: MainViewModel) {
     }
     val imagesOnly = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 
+    WarningCard(
+        "Penting: outfit harus sama",
+        "Pastikan ketiga foto memakai pakaian/outfit yang SAMA (baju, hijab, aksesoris). " +
+            "Kalau outfit berbeda-beda, AI bisa bingung dan hasil stiker jadi tidak konsisten."
+    )
+    Spacer(Modifier.height(16.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         for (i in 0 until 3) {
             PhotoSlot(
                 index = i,
-                thumb = vm.thumbs[i],
-                loading = vm.photoUris[i] != null && vm.thumbs[i] == null,
+                thumb = vm.photos[i]?.image,
+                loading = vm.photoUris[i] != null && vm.photos[i] == null,
                 onPick = {
                     pendingIndex = i
                     pickOne.launch(imagesOnly)
@@ -300,8 +309,9 @@ private fun PhotosStep(vm: MainViewModel) {
     TipCard(
         "Tips foto terbaik",
         listOf(
+            "Outfit sama di ketiga foto",
             "Wajah terlihat jelas & terang",
-            "Gunakan orang yang sama di ketiga foto",
+            "Orang yang sama di ketiga foto (boleh berdua, maks. 2 wajah)",
             "Campur sudut: depan, samping, setengah badan",
         )
     )
@@ -367,7 +377,130 @@ private fun PhotoSlot(
     }
 }
 
-/* ---------------------------------------------------------------- langkah 2: jumlah */
+/* ---------------------------------------------------------------- langkah 2: wajah */
+
+private val faceColors = listOf(Color(0xFF3E84E8), Color(0xFFE8673E))
+
+@Composable
+private fun FacesStep(vm: MainViewModel) {
+    InfoCard("Wajah di tiap foto sudah dideteksi otomatis. Ketuk kotak di wajah untuk memilih. Maksimal hanya 2 wajah yang bisa dijadikan stiker.")
+    Spacer(Modifier.height(14.dp))
+    for (i in 0 until 3) {
+        val info = vm.photos[i] ?: continue
+        val sel = vm.selections[i]
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Foto ${i + 1}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(
+                when (info.faces.size) {
+                    0 -> "Tidak ada wajah"
+                    else -> "${info.faces.size} wajah • ${sel.size} dipilih"
+                },
+                fontSize = 13.sp,
+                color = if (info.faces.isEmpty()) Color(0xFFD14343) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        FacePhoto(info = info, selected = sel, onToggle = { vm.toggleFace(i, it) })
+        Spacer(Modifier.height(6.dp))
+        when {
+            info.faces.isEmpty() -> Text(
+                "Wajah tidak terdeteksi. Kembali dan ganti foto ini dengan foto yang wajahnya terlihat jelas.",
+                fontSize = 13.sp,
+                color = Color(0xFFD14343)
+            )
+            info.faces.size == 2 && sel.size < 2 -> TextButton(onClick = { vm.selectAllFaces(i) }) {
+                Text("Pilih keduanya (stiker berdua)")
+            }
+            info.faces.size > 2 -> Text(
+                "Ada ${info.faces.size} wajah. Pilih maksimal 2.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            sel.isEmpty() -> Text(
+                "Ketuk wajah yang mau dijadikan stiker.",
+                fontSize = 13.sp,
+                color = LumiBlue
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+    }
+    val counts = vm.selections.map { it.size }.filter { it > 0 }
+    if (counts.size == 3 && counts.distinct().size > 1) {
+        InfoCard("Jumlah wajah yang dipilih berbeda di tiap foto. Stiker akan dibuat untuk ${vm.peopleCount} orang.")
+    }
+}
+
+@Composable
+private fun FacePhoto(info: PhotoInfo, selected: Set<Int>, onToggle: (Int) -> Unit) {
+    val bw = info.bitmap.width
+    val bh = info.bitmap.height
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(bw.toFloat() / bh.toFloat())
+            .clip(RoundedCornerShape(16.dp))
+            .background(LumiTile)
+    ) {
+        val scale = maxWidth / bw.toFloat()
+        Image(
+            bitmap = info.image,
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize()
+        )
+        info.faces.forEachIndexed { idx, face ->
+            val isSel = idx in selected
+            val order = selected.sorted().indexOf(idx)
+            val color = if (isSel) faceColors[order.coerceIn(0, 1)] else Color.White
+            Box(
+                Modifier
+                    .offset(x = scale * face.left.toFloat(), y = scale * face.top.toFloat())
+                    .size(width = scale * face.width().toFloat(), height = scale * face.height().toFloat())
+                    .border(if (isSel) 3.dp else 2.dp, color, RoundedCornerShape(8.dp))
+                    .background(if (isSel) Color.Transparent else Color.Black.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                    .clickable { onToggle(idx) }
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-6).dp, y = (-6).dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(color),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSel) {
+                        Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text("${idx + 1}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LumiBlue)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WarningCard(title: String, text: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFFFF4E0))
+            .border(1.dp, Color(0xFFF2B54A), RoundedCornerShape(14.dp))
+            .padding(14.dp)
+    ) {
+        Text("⚠️", fontSize = 18.sp)
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(title, fontWeight = FontWeight.Bold, color = Color(0xFF7A4B00))
+            Spacer(Modifier.height(2.dp))
+            Text(text, fontSize = 13.sp, color = Color(0xFF7A4B00))
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- langkah 3: jumlah */
 
 @Composable
 private fun CountStep(vm: MainViewModel) {
@@ -607,7 +740,7 @@ private fun GenerateStep(vm: MainViewModel) {
     ) {
         Column(Modifier.padding(18.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                vm.thumbs.forEach { t ->
+                vm.photos.map { it?.image }.forEach { t ->
                     Box(
                         Modifier
                             .weight(1f)
@@ -622,6 +755,13 @@ private fun GenerateStep(vm: MainViewModel) {
                 }
             }
             Spacer(Modifier.height(14.dp))
+            SummaryRow(
+                "Wajah",
+                if (vm.peopleCount >= 2) "2 orang (stiker berdua)" else "1 orang",
+                Step.FACES,
+                vm
+            )
+            HorizontalDivider()
             SummaryRow("Jumlah", "${vm.count} stiker", Step.COUNT, vm)
             HorizontalDivider()
             SummaryRow("Tema", vm.style?.let { "${it.emoji} ${it.label}" } ?: "-", Step.STYLE, vm)

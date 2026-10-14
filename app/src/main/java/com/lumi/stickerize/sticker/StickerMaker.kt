@@ -28,6 +28,8 @@ object StickerMaker {
         val px = IntArray(w * h)
         src.getPixels(px, 0, w, 0, 0, w, h)
 
+        // buang bingkai/kotak tipis yang kadang digambar AI di sekeliling stiker
+        StickerCore.removeFrameLines(px, w, h, (w / grid.cols * 0.45).toInt())
         val bg = StickerCore.backgroundMask(px, w, h)
         val xCuts = StickerCore.findCuts(bg, w, h, grid.cols, true)
         val yCuts = StickerCore.findCuts(bg, w, h, grid.rows, false)

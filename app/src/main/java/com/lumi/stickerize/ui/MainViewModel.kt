@@ -2,6 +2,7 @@ package com.lumi.stickerize.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -19,6 +20,7 @@ import com.lumi.stickerize.model.GridSpec
 import com.lumi.stickerize.model.StickerStyle
 import com.lumi.stickerize.sticker.PackStore
 import com.lumi.stickerize.sticker.StickerMaker
+import com.lumi.stickerize.util.FaceFinder
 import com.lumi.stickerize.util.ImageUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,12 +33,16 @@ import java.util.Locale
 
 enum class Step(val title: String, val subtitle: String) {
     PHOTOS("Pilih 3 foto", "Foto wajah yang jelas akan jadi referensi AI"),
+    FACES("Pilih wajah", "Ketuk kotak wajah yang mau dijadikan stiker"),
     COUNT("Jumlah stiker", "Mau dibuatkan berapa stiker?"),
     STYLE("Pilih tema", "Gaya gambar stikermu"),
     TEXT("Tulisan", "Pakai kata di stiker atau tidak?"),
     GENERATE("Siap dibuat", "Periksa lagi sebelum AI bekerja"),
     RESULT("Stiker kamu", "Tambahkan langsung ke WhatsApp"),
 }
+
+/** Satu foto referensi beserta hasil deteksi wajahnya. */
+class PhotoInfo(val bitmap: Bitmap, val image: ImageBitmap, val faces: List<Rect>)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -46,7 +52,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     val photoUris = mutableStateListOf<Uri?>(null, null, null)
-    val thumbs = mutableStateListOf<ImageBitmap?>(null, null, null)
+    val photos = mutableStateListOf<PhotoInfo?>(null, null, null)
+    /** Indeks wajah yang dipilih di tiap foto (maks 2). */
+    val selections = mutableStateListOf<Set<Int>>(emptySet(), emptySet(), emptySet())
 
     var count by mutableIntStateOf(5)
     var style by mutableStateOf<StickerStyle?>(null)
@@ -68,13 +76,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var job: Job? = null
 
-    val photosReady: Boolean get() = photoUris.all { it != null }
+    val photosReady: Boolean get() = photoUris.all { it != null } && photos.all { it != null }
+
+    /** Setiap foto punya minimal 1 wajah terpilih. */
+    val facesReady: Boolean
+        get() = photos.indices.all { i ->
+            val p = photos[i]
+            p != null && p.faces.isNotEmpty() && selections[i].isNotEmpty()
+        }
+
+    /** Jumlah orang di stiker = pilihan terbanyak di antara 3 foto (1 atau 2). */
+    val peopleCount: Int get() = selections.maxOfOrNull { it.size }?.coerceIn(1, MAX_FACES) ?: 1
     val activeWords: List<String> get() = words.take(count)
     val wordsReady: Boolean get() = !useText || activeWords.all { it.isNotBlank() }
 
 
     fun canGoNext(): Boolean = when (step) {
         Step.PHOTOS -> photosReady
+        Step.FACES -> facesReady
         Step.COUNT -> count in MIN_STICKERS..MAX_STICKERS
         Step.STYLE -> style != null
         Step.TEXT -> wordsReady
@@ -98,20 +117,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPhoto(index: Int, uri: Uri) {
         photoUris[index] = uri
-        thumbs[index] = null
+        photos[index] = null
+        selections[index] = emptySet()
         viewModelScope.launch {
             val bmp = withContext(Dispatchers.IO) {
-                runCatching { ImageUtils.loadScaled(getApplication(), uri, 512) }.getOrNull()
+                runCatching { ImageUtils.loadScaled(getApplication(), uri, 1024) }.getOrNull()
             }
-            if (photoUris[index] == uri) {
-                if (bmp == null) {
-                    photoUris[index] = null
-                    error = "Foto tidak bisa dibuka. Coba pilih foto lain."
-                } else {
-                    thumbs[index] = bmp.asImageBitmap()
-                }
+            if (photoUris[index] != uri) return@launch
+            if (bmp == null) {
+                photoUris[index] = null
+                error = "Foto tidak bisa dibuka. Coba pilih foto lain."
+                return@launch
             }
+            val faces = FaceFinder.detect(bmp)
+            if (photoUris[index] != uri) return@launch
+            photos[index] = PhotoInfo(bmp, bmp.asImageBitmap(), faces)
+            // 1 wajah = otomatis terpilih; lebih dari 1 = user yang memilih
+            selections[index] = if (faces.size == 1) setOf(0) else emptySet()
         }
+    }
+
+    /** Ketuk kotak wajah: pilih / batal pilih. Maksimal 2 wajah per foto. */
+    fun toggleFace(photo: Int, face: Int) {
+        val cur = selections[photo]
+        selections[photo] = when {
+            face in cur -> cur - face
+            cur.size >= MAX_FACES -> {
+                error = "Maksimal hanya 2 wajah yang bisa dijadikan stiker."
+                cur
+            }
+            else -> cur + face
+        }
+    }
+
+    /** Pilih semua wajah di foto (hanya kalau jumlahnya ≤ 2). */
+    fun selectAllFaces(photo: Int) {
+        val p = photos[photo] ?: return
+        if (p.faces.size > MAX_FACES) {
+            error = "Foto ini punya ${p.faces.size} wajah. Maksimal hanya 2 wajah yang bisa dijadikan stiker, jadi pilih 2 saja."
+            return
+        }
+        selections[photo] = p.faces.indices.toSet()
     }
 
     fun setPhotos(uris: List<Uri>) {
@@ -123,7 +169,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearPhoto(index: Int) {
         photoUris[index] = null
-        thumbs[index] = null
+        photos[index] = null
+        selections[index] = emptySet()
     }
 
     fun generate() {
@@ -134,8 +181,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val chosenStyle = style ?: return
-        val uris = photoUris.filterNotNull()
-        if (uris.size < 3) return
+        val infos = photos.toList()
+        if (infos.any { it == null } || !facesReady) return
+        val chosen = selections.toList()
+        val people = peopleCount
 
         generating = true
         error = null
@@ -146,17 +195,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val grid = GridSpec.forCount(total)
                 val captions = if (useText) activeWords.map { it.trim() } else emptyList()
 
-                val photos = withContext(Dispatchers.IO) {
-                    uris.map { uri ->
-                        val bmp = ImageUtils.loadScaled(app, uri, 1024)
-                            ?: throw IllegalStateException("Salah satu foto tidak bisa dibaca.")
-                        ImageUtils.toJpeg(bmp).also { bmp.recycle() }
+                // wajah yang tidak dipilih disamarkan, lalu foto dipotong di sekitar wajah terpilih
+                val refs = withContext(Dispatchers.Default) {
+                    infos.mapIndexed { i, info ->
+                        val ref = ImageUtils.buildReference(info!!.bitmap, info.faces, chosen[i])
+                        ImageUtils.toJpeg(ref).also { ref.recycle() }
                     }
                 }
 
-                val prompt = PromptBuilder.build(chosenStyle, grid, total, captions)
+                val prompt = PromptBuilder.build(chosenStyle, grid, total, captions, people)
                 val sheetBmp: Bitmap = OpenRouterClient(apiKey, settings.model)
-                    .generateSheet(prompt, photos, grid.aspectRatio)
+                    .generateSheet(prompt, refs, grid.aspectRatio)
 
                 val pieces = withContext(Dispatchers.Default) {
                     StickerMaker.slice(sheetBmp, grid, total)
@@ -227,5 +276,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** WhatsApp mewajibkan minimal 3 stiker per paket. */
         const val MIN_STICKERS = GridSpec.WHATSAPP_MIN
         const val MAX_STICKERS = 10
+        const val MAX_FACES = 2
     }
 }

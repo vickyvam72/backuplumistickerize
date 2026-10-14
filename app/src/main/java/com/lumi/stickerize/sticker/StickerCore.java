@@ -28,6 +28,139 @@ public final class StickerCore {
         return min >= 226 && (max - min) <= 30;
     }
 
+    /**
+     * Hapus garis bingkai tipis (kotak/kartu yang kadang digambar AI di sekeliling stiker).
+     * Garis bingkai dikenali sebagai deretan piksel gelap yang panjang, tapi di kedua sisinya
+     * (beberapa piksel di atas & bawah, atau kiri & kanan) masih putih. Garis seperti itu
+     * diputihkan (in-place) supaya latar di dalam kotak bisa terhapus oleh flood fill.
+     * @param minRun panjang minimum garis (mis. 45% lebar satu sel)
+     * @return jumlah piksel garis yang diputihkan
+     */
+    public static int removeFrameLines(int[] px, int w, int h, int minRun) {
+        final int gap = 6;          // jarak cek sisi kiri/kanan garis
+        final int maxThick = 10;    // garis lebih tebal dari ini bukan bingkai
+        boolean[] line = new boolean[w * h];
+        int removed = 0;
+
+        // garis horizontal
+        for (int y = 0; y < h; y++) {
+            int x = 0;
+            while (x < w) {
+                if (isBackgroundColor(px[y * w + x])) { x++; continue; }
+                int start = x;
+                while (x < w && !isBackgroundColor(px[y * w + x])) x++;
+                int len = x - start;
+                if (len >= minRun && isThinHorizontal(px, w, h, y, start, x, gap, maxThick)) {
+                    for (int i = start; i < x; i++) line[y * w + i] = true;
+                }
+            }
+        }
+        // garis vertikal
+        for (int x = 0; x < w; x++) {
+            int y = 0;
+            while (y < h) {
+                if (isBackgroundColor(px[y * w + x])) { y++; continue; }
+                int start = y;
+                while (y < h && !isBackgroundColor(px[y * w + x])) y++;
+                int len = y - start;
+                if (len >= minRun && isThinVertical(px, w, h, x, start, y, gap, maxThick)) {
+                    for (int i = start; i < y; i++) line[i * w + x] = true;
+                }
+            }
+        }
+        // Sisa lengkungan sudut bingkai: potongan tinta kecil yang menempel pada garis bingkai.
+        final int maxCorner = Math.max(200, minRun * minRun / 60);
+        boolean[] visited = new boolean[w * h];
+        int[] queue = new int[w * h];
+        for (int i = 0; i < line.length; i++) {
+            if (!line[i]) continue;
+            int x = i % w, y = i / w;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                    int ni = ny * w + nx;
+                    if (line[ni] || visited[ni] || isBackgroundColor(px[ni])) continue;
+                    // kumpulkan komponen tinta (tanpa garis), berhenti kalau terlalu besar
+                    int head = 0, tail = 0;
+                    queue[tail++] = ni;
+                    visited[ni] = true;
+                    boolean tooBig = false;
+                    while (head < tail) {
+                        int c = queue[head++];
+                        if (tail > maxCorner) { tooBig = true; break; }
+                        int cx = c % w, cy = c / w;
+                        for (int ey = -1; ey <= 1; ey++) {
+                            for (int ex = -1; ex <= 1; ex++) {
+                                int mx = cx + ex, my = cy + ey;
+                                if (mx < 0 || my < 0 || mx >= w || my >= h) continue;
+                                int mi = my * w + mx;
+                                if (line[mi] || visited[mi] || isBackgroundColor(px[mi])) continue;
+                                visited[mi] = true;
+                                queue[tail++] = mi;
+                            }
+                        }
+                    }
+                    if (!tooBig) {
+                        for (int q = 0; q < tail; q++) {
+                            px[queue[q]] = 0xFFFFFFFF;
+                            removed++;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < line.length; i++) {
+            if (line[i]) {
+                px[i] = 0xFFFFFFFF;
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private static boolean isThinHorizontal(int[] px, int w, int h, int y, int x0, int x1,
+                                            int gap, int maxThick) {
+        int whiteAbove = 0, whiteBelow = 0, n = x1 - x0;
+        for (int x = x0; x < x1; x++) {
+            if (whiteWithin(px, w, h, x, y, 0, -1, gap, maxThick)) whiteAbove++;
+            if (whiteWithin(px, w, h, x, y, 0, 1, gap, maxThick)) whiteBelow++;
+        }
+        return whiteAbove >= n * 0.8 && whiteBelow >= n * 0.8;
+    }
+
+    private static boolean isThinVertical(int[] px, int w, int h, int x, int y0, int y1,
+                                          int gap, int maxThick) {
+        int whiteLeft = 0, whiteRight = 0, n = y1 - y0;
+        for (int y = y0; y < y1; y++) {
+            if (whiteWithin(px, w, h, x, y, -1, 0, gap, maxThick)) whiteLeft++;
+            if (whiteWithin(px, w, h, x, y, 1, 0, gap, maxThick)) whiteRight++;
+        }
+        return whiteLeft >= n * 0.8 && whiteRight >= n * 0.8;
+    }
+
+    /** Apakah ada piksel putih dalam jarak [gap .. maxThick] ke arah (dx,dy)? Tepi gambar dihitung putih. */
+    private static boolean whiteWithin(int[] px, int w, int h, int x, int y, int dx, int dy,
+                                       int gap, int maxThick) {
+        for (int k = 1; k <= maxThick; k++) {
+            int nx = x + dx * k, ny = y + dy * k;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
+            if (isBackgroundColor(px[ny * w + nx])) {
+                // putih harus bertahan beberapa piksel (bukan sekadar celah antar huruf)
+                int run = 0;
+                for (int j = k; j < k + gap; j++) {
+                    int mx = x + dx * j, my = y + dy * j;
+                    if (mx < 0 || my < 0 || mx >= w || my >= h) { run = gap; break; }
+                    if (!isBackgroundColor(px[my * w + mx])) break;
+                    run++;
+                }
+                return run >= gap;
+            }
+        }
+        return false;
+    }
+
     /** Tandai latar putih yang tersambung ke tepi gambar (flood fill). true = latar. */
     public static boolean[] backgroundMask(int[] px, int w, int h) {
         boolean[] bg = new boolean[w * h];

@@ -27,22 +27,35 @@ object PromptBuilder {
         grid: GridSpec,
         stickerCount: Int,
         captions: List<String>,
+        people: Int = 1,
     ): String {
         val sb = StringBuilder()
         sb.appendLine(
             "Create ONE single image: a sticker sheet arranged as an invisible grid of " +
                 "${grid.cols} columns × ${grid.rows} rows (${grid.cells} equal square cells)."
         )
-        sb.appendLine(
-            "The character is the person in the attached reference photos. Keep them clearly " +
-                "recognisable: same face shape, hairstyle, hair colour, skin tone, glasses or " +
-                "hijab/accessories if any, and a similar outfit. Use the same character in every cell."
-        )
+        if (people >= 2) {
+            sb.appendLine(
+                "There are TWO characters: the two people visible in the attached reference photos " +
+                    "(ignore anyone whose face is pixelated/blurred). EVERY sticker must show BOTH of them " +
+                    "together in the same cell, side by side and interacting naturally, both doing the pose. " +
+                    "Keep each person clearly recognisable and distinct from the other: same face shape, " +
+                    "hairstyle, hair colour, skin tone, glasses or hijab/accessories if any, and the same " +
+                    "outfit they wear in the photos."
+            )
+        } else {
+            sb.appendLine(
+                "The character is the one person shown in the attached reference photos " +
+                    "(ignore anyone whose face is pixelated/blurred). Keep them clearly recognisable: " +
+                    "same face shape, hairstyle, hair colour, skin tone, glasses or hijab/accessories " +
+                    "if any, and the same outfit they wear in the photos. Use the same character in every cell."
+            )
+        }
         sb.appendLine("Art style: ${style.prompt}.")
         sb.appendLine()
         sb.appendLine("Strict layout rules:")
         sb.appendLine("- Background must be pure flat white (#FFFFFF) everywhere. No scenery, no gradients, no shadows on the background.")
-        sb.appendLine("- Do NOT draw grid lines, borders, frames, boxes or separators.")
+        sb.appendLine("- Do NOT draw grid lines, borders, frames, boxes, cards, panels or separators. Stickers float directly on the white background, never inside a rectangle.")
         sb.appendLine("- Each sticker sits centred inside its own cell with clear white space (at least 10% padding) on every side. Nothing may touch or cross into a neighbouring cell.")
         sb.appendLine("- Show the character as a half-body or full-body pose with a clean, bold dark outline around the whole figure.")
         sb.appendLine("- No watermark, signature, logo or any text other than the captions listed below.")
@@ -61,7 +74,8 @@ object PromptBuilder {
             if (caption.isNotEmpty()) {
                 sb.appendLine("$n. A pose and facial expression that matches the meaning of the caption. Caption: \"$caption\"")
             } else {
-                sb.appendLine("$n. The character ${poses[i % poses.size]}. No text.")
+                val who = if (people >= 2) "Both characters" else "The character"
+                sb.appendLine("$n. $who ${poses[i % poses.size]}. No text.")
             }
         }
         return sb.toString()

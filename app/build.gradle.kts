@@ -14,8 +14,8 @@ android {
         applicationId = "com.lumi.stickerize"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         manifestPlaceholders["contentProviderAuthority"] = stickerAuthority
         buildConfigField("String", "CONTENT_PROVIDER_AUTHORITY", "\"$stickerAuthority\"")
@@ -80,4 +80,8 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+
+    // Deteksi wajah di HP (model ikut di dalam APK, tidak butuh internet)
+    implementation("com.google.mlkit:face-detection:16.1.7")
 }
