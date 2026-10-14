@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.lumi.stickerize.ai.GeminiClient
+import com.lumi.stickerize.ai.OpenRouterClient
 import com.lumi.stickerize.ai.PromptBuilder
 import com.lumi.stickerize.data.AppSettings
 import com.lumi.stickerize.model.GridSpec
@@ -72,12 +72,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val activeWords: List<String> get() = words.take(count)
     val wordsReady: Boolean get() = !useText || activeWords.all { it.isNotBlank() }
 
-    /** Jumlah stiker yang benar-benar dibuat (WhatsApp minta minimal 3). */
-    val stickerTotal: Int get() = maxOf(count, GridSpec.WHATSAPP_MIN)
 
     fun canGoNext(): Boolean = when (step) {
         Step.PHOTOS -> photosReady
-        Step.COUNT -> count in 1..MAX_STICKERS
+        Step.COUNT -> count in MIN_STICKERS..MAX_STICKERS
         Step.STYLE -> style != null
         Step.TEXT -> wordsReady
         else -> false
@@ -144,7 +142,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         job = viewModelScope.launch {
             try {
                 val app = getApplication<Application>()
-                val total = stickerTotal
+                val total = count
                 val grid = GridSpec.forCount(total)
                 val captions = if (useText) activeWords.map { it.trim() } else emptyList()
 
@@ -157,7 +155,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 val prompt = PromptBuilder.build(chosenStyle, grid, total, captions)
-                val sheetBmp: Bitmap = GeminiClient(apiKey, settings.model)
+                val sheetBmp: Bitmap = OpenRouterClient(apiKey, settings.model)
                     .generateSheet(prompt, photos, grid.aspectRatio)
 
                 val pieces = withContext(Dispatchers.Default) {
@@ -182,11 +180,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 stickers = pieces.map { it.asImageBitmap() }
                 packId = id
                 packName = name
-                notice = when {
-                    pieces.size < total -> "Ada ${total - pieces.size} sel yang kosong, jadi hanya ${pieces.size} stiker yang dibuat."
-                    count < GridSpec.WHATSAPP_MIN -> "WhatsApp butuh minimal 3 stiker per paket, jadi ada ${total - count} stiker bonus."
-                    else -> null
-                }
+                notice = if (pieces.size < total) {
+                    "Ada ${total - pieces.size} stiker yang tidak tergambar oleh AI, jadi hanya ${pieces.size} stiker yang dibuat."
+                } else null
                 step = Step.RESULT
             } catch (e: CancellationException) {
                 throw e
@@ -228,6 +224,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
+        /** WhatsApp mewajibkan minimal 3 stiker per paket. */
+        const val MIN_STICKERS = GridSpec.WHATSAPP_MIN
         const val MAX_STICKERS = 10
     }
 }

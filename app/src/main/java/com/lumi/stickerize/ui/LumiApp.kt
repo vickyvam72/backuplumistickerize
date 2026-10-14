@@ -382,7 +382,7 @@ private fun CountStep(vm: MainViewModel) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            RoundButton("−", enabled = vm.count > 1) { vm.count-- }
+            RoundButton("−", enabled = vm.count > MainViewModel.MIN_STICKERS) { vm.count-- }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("${vm.count}", fontSize = 64.sp, fontWeight = FontWeight.Black, color = LumiBlue)
                 Text("stiker", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -391,7 +391,7 @@ private fun CountStep(vm: MainViewModel) {
         }
     }
     Spacer(Modifier.height(16.dp))
-    (1..MainViewModel.MAX_STICKERS).chunked(5).forEach { row ->
+    (MainViewModel.MIN_STICKERS..MainViewModel.MAX_STICKERS).chunked(4).forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             row.forEach { n ->
                 val selected = vm.count == n
@@ -416,10 +416,8 @@ private fun CountStep(vm: MainViewModel) {
         }
         Spacer(Modifier.height(10.dp))
     }
-    if (vm.count < GridSpec.WHATSAPP_MIN) {
-        Spacer(Modifier.height(6.dp))
-        InfoCard("WhatsApp butuh minimal 3 stiker per paket, jadi kamu akan dapat ${GridSpec.WHATSAPP_MIN - vm.count} stiker bonus tanpa kata.")
-    }
+    Spacer(Modifier.height(6.dp))
+    InfoCard("Bisa 3 sampai 10 stiker. Semuanya dibuat dalam 1 gambar AI, jadi biayanya sama saja.")
 }
 
 @Composable
@@ -526,9 +524,6 @@ private fun TextStep(vm: MainViewModel) {
                     .fillMaxWidth()
                     .padding(bottom = 8.dp)
             )
-        }
-        if (vm.count < GridSpec.WHATSAPP_MIN) {
-            InfoCard("Stiker bonus (agar genap 3) dibuat tanpa kata.")
         }
         Spacer(Modifier.height(4.dp))
         Text(
@@ -819,16 +814,17 @@ private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "Lumi memakai Google Gemini. Masukkan API key kamu (gratis dari Google AI Studio). Key hanya disimpan di HP ini.",
+                    "Lumi memakai AI dari OpenRouter. Masukkan API key OpenRouter kamu (diawali sk-or-). Key hanya disimpan di HP ini.",
                     fontSize = 14.sp
                 )
                 TextButton(onClick = { uri.openUri(AppSettings.API_KEY_URL) }) {
-                    Text("Dapatkan API key →")
+                    Text("Buat API key di openrouter.ai →")
                 }
                 OutlinedTextField(
                     value = key,
                     onValueChange = { key = it },
-                    label = { Text("Gemini API key") },
+                    label = { Text("OpenRouter API key") },
+                    placeholder = { Text("sk-or-v1-…") },
                     singleLine = true,
                     visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -836,12 +832,33 @@ private fun SettingsDialog(settings: AppSettings, onClose: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
+                Text("Model AI", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                AppSettings.MODELS.forEach { m ->
+                    val selected = model == m.id
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .border(
+                                if (selected) 2.dp else 0.dp,
+                                if (selected) LumiBlue else Color.Transparent,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable { model = m.id }
+                            .padding(12.dp)
+                    ) {
+                        Text(m.label, fontWeight = FontWeight.SemiBold)
+                        Text(m.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 OutlinedTextField(
                     value = model,
                     onValueChange = { model = it },
-                    label = { Text("Model gambar") },
-                    supportingText = { Text("Default: ${AppSettings.DEFAULT_MODEL}") },
+                    label = { Text("ID model (bisa diisi manual)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

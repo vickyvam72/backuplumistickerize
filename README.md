@@ -5,14 +5,12 @@ Aplikasi Android untuk membuat **stiker WhatsApp otomatis dengan AI**.
 ## Cara kerja
 
 1. **Pilih 3 foto** sebagai referensi wajah.
-2. **Pilih jumlah stiker** (1–10).
+2. **Pilih jumlah stiker** (3–10, minimal 3 sesuai aturan WhatsApp).
 3. **Pilih tema**: Cartoon, Chibi, Anime, 3D Lucu, Kawaii, Pixel Art, Komik, Cat Air, Clay, Sketsa.
 4. **Tanpa kata / pakai kata** — kalau pakai kata, isi 1 kata untuk tiap stiker (5 stiker = 5 kata).
-5. AI (Google Gemini) membuat **1 gambar saja** berisi semua stiker dalam bentuk grid → hemat token.
+5. AI (lewat OpenRouter) membuat **1 gambar saja** berisi semua stiker dalam bentuk grid → hemat token.
 6. Aplikasi **memotong otomatis** gambar itu menjadi stiker 512×512 (latar putih dihapus, diberi garis tepi putih, WebP < 100 KB).
 7. Tekan **Tambahkan ke WhatsApp**.
-
-> Catatan: WhatsApp mewajibkan **minimal 3 stiker** per paket. Jika memilih 1–2 stiker, aplikasi menambahkan stiker bonus tanpa kata.
 
 ## Download APK
 
@@ -20,15 +18,24 @@ Setiap push ke `main` otomatis di-build oleh GitHub Actions. Ambil APK terbaru d
 
 ## Pengaturan pertama kali
 
-Buka ikon ⚙️ di aplikasi, lalu isi **Gemini API key** (gratis dari https://aistudio.google.com/apikey). Key hanya disimpan di HP.
-Model default: `gemini-2.5-flash-image` — bisa diganti di pengaturan jika Google merilis model gambar yang lebih baru.
+Buka ikon ⚙️ di aplikasi, lalu isi **OpenRouter API key** (buat di https://openrouter.ai/keys, isi kredit di https://openrouter.ai/credits). Key hanya disimpan di HP.
+
+Pilihan model (bisa diganti di pengaturan):
+
+| Model | ID | Catatan |
+|---|---|---|
+| Nano Banana 2 Lite (default) | `google/gemini-3.1-flash-lite-image` | Murah & cepat, wajah mirip, teks rapi |
+| Seedream 5.0 Flash | `bytedance-seed/seedream-5-0-flash` | Paling hemat (±$0,018/gambar) |
+| Nano Banana 2 | `google/gemini-3.1-flash-image` | Kualitas terbaik, ±2x harga Lite |
+
+Aplikasi memakai endpoint `POST https://openrouter.ai/api/v1/images` dengan 3 foto sebagai `input_references`. Satu pembuatan = 1 gambar, berapa pun jumlah stikernya.
 
 ## Struktur kode
 
 | File | Isi |
 |---|---|
 | `ai/PromptBuilder.kt` | Menyusun prompt 1 halaman (grid, tema, kata per sel) |
-| `ai/GeminiClient.kt` | Memanggil API Gemini dengan 3 foto + prompt |
+| `ai/OpenRouterClient.kt` | Memanggil Image API OpenRouter dengan 3 foto + prompt |
 | `sticker/StickerCore.java` | Algoritma potong: hapus latar, cari celah antar stiker, buang noise, garis tepi putih |
 | `sticker/StickerMaker.kt` | Render 512×512, encode WebP, ikon tray 96×96 |
 | `sticker/PackStore.kt` | Simpan paket di penyimpanan internal |
