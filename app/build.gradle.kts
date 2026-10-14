@@ -17,6 +17,11 @@ android {
         versionCode = 3
         versionName = "1.2.0"
 
+        // Hanya prosesor HP Android (ARM). Emulator x86 tidak disertakan agar APK lebih kecil.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
         manifestPlaceholders["contentProviderAuthority"] = stickerAuthority
         buildConfigField("String", "CONTENT_PROVIDER_AUTHORITY", "\"$stickerAuthority\"")
     }
